@@ -3,7 +3,7 @@ ws_client.py — Binance WebSocket with auto-reconnect.
 
 Reconnects when:
   - connection drops (on_close / on_error)
-  - no message received for STALE_SECONDS (default 60s)
+  - no message received for STALE_SECONDS (default 2s)
 """
 
 import threading
@@ -11,9 +11,9 @@ import time
 
 import websocket
 
-STALE_SECONDS = 60
-RECONNECT_DELAY = 5
-WATCHDOG_INTERVAL = 10
+STALE_SECONDS = 2
+RECONNECT_DELAY = 2
+WATCHDOG_INTERVAL = 1
 PING_INTERVAL = 30
 PING_TIMEOUT = 10
 
