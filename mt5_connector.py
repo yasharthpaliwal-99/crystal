@@ -177,17 +177,23 @@ def _place_order(trade: dict) -> bool:
     return True
 
 
-def _mt5_alive() -> bool:
-    return mt5.account_info() is not None
+def _hard_reset_mt5():
+    try:
+        mt5.shutdown()
+    except Exception:
+        pass
+    time.sleep(2)
+    return _init_mt5()
 
 
 def _ensure_mt5() -> bool:
-    if _mt5_alive():
-        return True
-    print("MT5 IPC dropped — reconnecting...")
-    mt5.shutdown()
-    time.sleep(1)
-    return _init_mt5()
+    try:
+        if mt5.account_info() is not None:
+            return True
+    except Exception:
+        pass
+    print("MT5 disconnected — reconnecting...")
+    return _hard_reset_mt5()
 
 
 def _listen():
@@ -202,9 +208,10 @@ def _listen():
 
         try:
             resp = r.xread({cfg.EVENTS_STREAM: last_id}, block=5000, count=10)
-        except redis.ConnectionError as e:
-            print(f"Redis connection error: {e} — retrying in 5s")
+        except redis.RedisError as e:
+            print(f"Redis error: {e} — retrying in 5s")
             time.sleep(5)
+            r = _redis()
             continue
 
         if not resp:
@@ -216,22 +223,38 @@ def _listen():
                 payload = fields.get("payload")
                 if not payload:
                     continue
-                trade = json.loads(payload)
-                if trade.get("action") != "ENTER":
-                    continue
-                _place_order(trade)
+                try:
+                    trade = json.loads(payload)
+                    if trade.get("action") != "ENTER":
+                        continue
+                    _place_order(trade)
+                except Exception as e:
+                    print(f"Order/task error: {e} — resetting MT5")
+                    _hard_reset_mt5()
 
 
 def main():
-    while not _init_mt5():
-        print("Retrying MT5 in 5s...")
-        time.sleep(5)
     try:
-        _listen()
+        while True:
+            try:
+                if not _init_mt5():
+                    print("MT5 init failed — retry in 5s")
+                    time.sleep(5)
+                    continue
+                _listen()
+            except KeyboardInterrupt:
+                raise
+            except Exception as e:
+                print(f"Connector crashed: {e} — restarting in 5s")
+                _hard_reset_mt5()
+                time.sleep(5)
     except KeyboardInterrupt:
         print("\nShutting down.")
     finally:
-        mt5.shutdown()
+        try:
+            mt5.shutdown()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
