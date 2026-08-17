@@ -177,12 +177,29 @@ def _place_order(trade: dict) -> bool:
     return True
 
 
+def _mt5_alive() -> bool:
+    return mt5.account_info() is not None
+
+
+def _ensure_mt5() -> bool:
+    if _mt5_alive():
+        return True
+    print("MT5 IPC dropped — reconnecting...")
+    mt5.shutdown()
+    time.sleep(1)
+    return _init_mt5()
+
+
 def _listen():
     r = _redis()
     last_id = "$"
     print(f"Listening on {cfg.EVENTS_STREAM} (Redis {cfg.REDIS_HOST})...")
 
     while True:
+        if not _ensure_mt5():
+            time.sleep(5)
+            continue
+
         try:
             resp = r.xread({cfg.EVENTS_STREAM: last_id}, block=5000, count=10)
         except redis.ConnectionError as e:
@@ -206,8 +223,9 @@ def _listen():
 
 
 def main():
-    if not _init_mt5():
-        sys.exit(1)
+    while not _init_mt5():
+        print("Retrying MT5 in 5s...")
+        time.sleep(5)
     try:
         _listen()
     except KeyboardInterrupt:
