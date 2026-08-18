@@ -33,7 +33,14 @@ except ImportError:
 
 
 def _redis():
-    return redis.Redis(host=cfg.REDIS_HOST, port=cfg.REDIS_PORT, decode_responses=True)
+    return redis.Redis(
+        host=cfg.REDIS_HOST,
+        port=cfg.REDIS_PORT,
+        decode_responses=True,
+        socket_keepalive=True,
+        socket_connect_timeout=5,
+        retry_on_timeout=True,
+    )
 
 
 def _account_balance() -> float:
@@ -199,6 +206,11 @@ def _ensure_mt5() -> bool:
 def _listen():
     r = _redis()
     last_id = "$"
+    try:
+        r.ping()
+    except redis.ConnectionError as e:
+        print(f"Redis not reachable at {cfg.REDIS_HOST}:{cfg.REDIS_PORT} — {e}")
+        raise
     print(f"Listening on {cfg.EVENTS_STREAM} (Redis {cfg.REDIS_HOST})...")
 
     while True:
@@ -208,8 +220,15 @@ def _listen():
 
         try:
             resp = r.xread({cfg.EVENTS_STREAM: last_id}, block=5000, count=10)
+        except redis.TimeoutError:
+            continue
+        except redis.ConnectionError as e:
+            print(f"Redis disconnected: {e} — reconnecting in 5s")
+            time.sleep(5)
+            r = _redis()
+            continue
         except redis.RedisError as e:
-            print(f"Redis error: {e} — retrying in 5s")
+            print(f"Redis error ({type(e).__name__}): {e}")
             time.sleep(5)
             r = _redis()
             continue
