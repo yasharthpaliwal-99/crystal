@@ -15,8 +15,9 @@ from feature_engine import create_flow_state, add_trade, flow_snapshot
 from liquidity_engine import create_liquidity_state, observe_liquidity, liquidity_zones
 from depth_engine import create_book, apply_diff
 from storage import create_db, save_liquidity_snapshot, save_movement, save_zone_features
+from bootstrap_structure import load_structure
 from movement_engine import (
-    create_movement_state, add_trade as movement_add_trade,
+    add_trade as movement_add_trade,
     add_1m_candle as movement_add_1m_candle, movement_snapshot,
 )
 from zone_engine import (
@@ -92,7 +93,7 @@ def run():
     conn = create_db()
 
     flow_state = create_flow_state()
-    movement_state = create_movement_state()
+    movement_state = load_structure()
     zone_state = create_zone_state()
     liq_state = create_liquidity_state()
     book = create_book()
